@@ -4,13 +4,21 @@ import time
 from pathlib import Path
 
 
+def parse_config(cfg_json: str) -> dict:
+    try:
+        return json.loads(cfg_json)
+    except json.JSONDecodeError:
+        # Compatibility fallback for over-escaped values like {\"k\":\"v\"}
+        return json.loads(cfg_json.replace("\\\"", "\""))
+
+
 def main():
     model = os.environ.get("MODEL", "simple_job")
     run_id = os.environ.get("RUN_ID", "run-000")
     cfg_json = os.environ.get("CONFIG_JSON", "{}")
     out_dir = os.environ.get("OUT_DIR", "/output")
 
-    cfg = json.loads(cfg_json)
+    cfg = parse_config(cfg_json)
     message = str(cfg.get("message", "hello-from-k8s-job"))
     repeat = int(cfg.get("repeat", 1))
     sleep_ms = int(cfg.get("sleep_ms", 50))

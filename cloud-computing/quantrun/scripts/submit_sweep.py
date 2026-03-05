@@ -12,7 +12,7 @@ sleeps = [10, 25]
 
 def apply_job(run_id: str, cfg: dict):
     yml = TEMPLATE.replace("REPLACE_RUNID", run_id)
-    yml = yml.replace("REPLACE_CONFIGJSON", json.dumps(cfg).replace('"', '\\"'))
+    yml = yml.replace("REPLACE_CONFIGJSON", json.dumps(cfg))
     p = pathlib.Path("k8s/workflows/generated")
     p.mkdir(parents=True, exist_ok=True)
     f = p / f"job-{run_id}.yaml"
