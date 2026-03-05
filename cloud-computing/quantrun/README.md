@@ -100,6 +100,27 @@ kubectl -n quant-dev delete pod results-helper
 kubectl delete ns quant-dev
 ```
 
+
+## 9) Analytics dashboard (Kubernetes power + Monte Carlo animation)
+
+Generate analytics input from your aggregated summary:
+
+```bash
+python scripts/export_analytics_data.py
+```
+
+Serve the dashboard locally:
+
+```bash
+cd analytics
+python -m http.server 8000
+```
+
+Open `http://localhost:8000` to view:
+- Kubernetes compute KPIs (job count, average/p95 duration, compute score)
+- Job duration timeline
+- Live Monte Carlo distribution animation with VaR(5%) marker
+
 ## Next upgrades
 
 - Switch to Kubernetes Indexed Jobs for cleaner sweep indexing.
