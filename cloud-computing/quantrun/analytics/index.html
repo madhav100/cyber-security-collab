@@ -15,6 +15,7 @@
     header { padding: 20px 24px; border-bottom: 1px solid #243056; }
     h1 { margin: 0; font-size: 1.5rem; }
     .sub { color: #9faed8; margin-top: 6px; }
+    .notice { margin: 8px 16px 0; padding: 10px 12px; border: 1px solid #6f5f28; border-radius: 10px; background: #2a230d; color: #f5da90; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -40,7 +41,8 @@
 <body>
   <header>
     <h1>QuantRun Analytics Dashboard</h1>
-    <div class="sub">Visualizes Kubernetes batch throughput and Monte Carlo risk distribution.</div>
+    <div class="sub">Visualizes Kubernetes batch throughput and sweep VaR distribution from completed jobs.</div>
+    <div id="dataNotice" class="notice" hidden></div>
   </header>
 
   <div class="grid">
@@ -57,9 +59,9 @@
     </section>
 
     <section class="card">
-      <h2>Monte Carlo Animation</h2>
+      <h2>Sweep VaR Distribution (from completed jobs)</h2>
       <canvas id="montecarlo" width="900" height="280"></canvas>
-      <p class="small">Animated normal samples with live VaR(5%) estimate.</p>
+      <p class="small">Histogram and VaR(5%) are computed from completed-job outputs (<code>var</code>) and optionally animated as progressive reveal.</p>
     </section>
   </div>
 
@@ -70,16 +72,17 @@
         { run_id: "demo-002", mu: 0.0004, sigma: 0.012, seed: 22, var: -0.019, duration_s: 1.7 },
         { run_id: "demo-003", mu: 0.0005, sigma: 0.008, seed: 11, var: -0.013, duration_s: 1.1 },
       ],
-      cpu_request_cores: 0.5
+      cpu_request_cores: 0.5,
+      var_values: [-0.016, -0.019, -0.013]
     };
 
     async function loadData() {
       try {
         const r = await fetch("./data/analytics.json", { cache: "no-store" });
         if (!r.ok) throw new Error("no analytics.json");
-        return await r.json();
+        return { ...(await r.json()), source: "live" };
       } catch (_) {
-        return FALLBACK;
+        return { ...FALLBACK, source: "fallback" };
       }
     }
 
@@ -87,6 +90,17 @@
       const sorted = [...values].sort((a, b) => a - b);
       const idx = Math.floor((sorted.length - 1) * p);
       return sorted[Math.max(0, idx)] ?? 0;
+    }
+
+    function setNotice(msg) {
+      const notice = document.getElementById("dataNotice");
+      if (!msg) {
+        notice.hidden = true;
+        notice.textContent = "";
+        return;
+      }
+      notice.hidden = false;
+      notice.textContent = msg;
     }
 
     function renderKPIs(data) {
@@ -135,38 +149,42 @@
       ctx.fillText(`jobs=${n}`, c.width - 70, 14);
     }
 
-    function monteCarloAnimation() {
+    function sweepVarAnimation(data) {
       const c = document.getElementById("montecarlo");
       const ctx = c.getContext("2d");
-      const samples = [];
-      const maxSamples = 2000;
-      const mu = 0.0004;
-      const sigma = 0.011;
+      const varValues = (data.var_values && data.var_values.length
+        ? data.var_values
+        : data.jobs.map(j => Number(j.var)).filter(v => Number.isFinite(v))
+      ).slice();
 
-      function normal() {
-        const u1 = Math.max(Math.random(), 1e-12);
-        const u2 = Math.random();
-        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      if (!varValues.length) {
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.fillStyle = "#9faed8";
+        ctx.font = "14px sans-serif";
+        ctx.fillText("No completed jobs with VaR values found.", 20, 30);
+        return;
       }
+
+      const sortedAll = [...varValues].sort((a, b) => a - b);
+      const min = sortedAll[0];
+      const max = sortedAll[sortedAll.length - 1] + 1e-12;
+      const binsCount = Math.min(60, Math.max(12, Math.ceil(Math.sqrt(sortedAll.length) * 2)));
+
+      const revealed = [];
+      let index = 0;
 
       function var5(vals) {
         if (!vals.length) return 0;
-        const sorted = [...vals].sort((a,b) => a - b);
-        return sorted[Math.floor(0.05 * sorted.length)] ?? 0;
+        const sorted = [...vals].sort((a, b) => a - b);
+        return sorted[Math.floor(0.05 * (sorted.length - 1))] ?? 0;
       }
 
-      function frame() {
-        for (let i = 0; i < 20; i++) {
-          const r = mu + sigma * normal();
-          samples.push(r);
-          if (samples.length > maxSamples) samples.shift();
-        }
-
-        const min = -0.06, max = 0.06;
-        const bins = new Array(60).fill(0);
-        for (const s of samples) {
-          const idx = Math.floor(((s - min) / (max - min)) * bins.length);
-          if (idx >= 0 && idx < bins.length) bins[idx]++;
+      function draw() {
+        const bins = new Array(binsCount).fill(0);
+        for (const s of revealed) {
+          const ratio = (s - min) / (max - min || 1);
+          const idx = Math.min(binsCount - 1, Math.max(0, Math.floor(ratio * binsCount)));
+          bins[idx]++;
         }
 
         ctx.clearRect(0, 0, c.width, c.height);
@@ -180,8 +198,8 @@
           ctx.fillRect(x, y, bw, h);
         });
 
-        const v = var5(samples);
-        const vx = ((v - min) / (max - min)) * c.width;
+        const v = var5(revealed);
+        const vx = ((v - min) / (max - min || 1)) * c.width;
         ctx.strokeStyle = "#ff7f7f";
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -191,19 +209,35 @@
 
         ctx.fillStyle = "#9faed8";
         ctx.font = "12px sans-serif";
-        ctx.fillText(`samples=${samples.length}`, 10, 14);
-        ctx.fillText(`VaR(5%)=${v.toFixed(4)}`, c.width - 120, 14);
+        ctx.fillText(`samples=${revealed.length}/${varValues.length}`, 10, 14);
+        ctx.fillText(`VaR(5%)=${v.toFixed(4)}`, c.width - 130, 14);
+      }
 
-        requestAnimationFrame(frame);
+      function frame() {
+        for (let i = 0; i < 8 && index < sortedAll.length; i++) {
+          revealed.push(sortedAll[index++]);
+        }
+        draw();
+        if (index < sortedAll.length) {
+          requestAnimationFrame(frame);
+        }
       }
 
       frame();
     }
 
     loadData().then((data) => {
+      if (data.source === "fallback") {
+        setNotice("Using fallback/demo analytics data because analytics/data/analytics.json was unavailable.");
+      } else if (!data.jobs?.length) {
+        setNotice("analytics.json loaded, but there are no completed jobs yet.");
+      } else {
+        setNotice("");
+      }
+
       renderKPIs(data);
       drawTimeline(data);
-      monteCarloAnimation();
+      sweepVarAnimation(data);
     });
   </script>
 </body>
