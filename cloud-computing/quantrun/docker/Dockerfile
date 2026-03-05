@@ -9,4 +9,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # default entrypoint runs the model selected by MODEL env var
-CMD ["python", "models/var_mc/run.py"]
+CMD ["python", "models/simple_job/run.py"]
