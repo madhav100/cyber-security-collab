@@ -41,7 +41,7 @@
 <body>
   <header>
     <h1>QuantRun Analytics Dashboard</h1>
-    <div class="sub">Visualizes Kubernetes batch throughput and sweep VaR distribution from completed jobs.</div>
+    <div class="sub">Visualizes Kubernetes batch throughput and output-size distribution from completed jobs.</div>
     <div id="dataNotice" class="notice" hidden></div>
   </header>
 
@@ -49,7 +49,7 @@
     <section class="card" style="grid-column: 1 / -1;">
       <h2>Kubernetes Compute Power (estimated)</h2>
       <div class="kpis" id="kpis"></div>
-      <p class="small">Compute score uses job count, requested CPU (<code>500m</code>) and measured durations from summary data.</p>
+      <p class="small">Compute score uses job count, requested CPU (<code>100m</code>) and measured durations from summary data.</p>
     </section>
 
     <section class="card">
@@ -59,21 +59,21 @@
     </section>
 
     <section class="card">
-      <h2>Sweep VaR Distribution (from completed jobs)</h2>
+      <h2>Job Output Distribution (from completed jobs)</h2>
       <canvas id="montecarlo" width="900" height="280"></canvas>
-      <p class="small">Histogram and VaR(5%) are computed from completed-job outputs (<code>var</code>) and optionally animated as progressive reveal.</p>
+      <p class="small">Histogram and P05 are computed from completed-job output metrics (<code>value</code>) and optionally animated as progressive reveal.</p>
     </section>
   </div>
 
   <script>
     const FALLBACK = {
       jobs: [
-        { run_id: "demo-001", mu: 0.0003, sigma: 0.01, seed: 11, var: -0.016, duration_s: 1.3 },
-        { run_id: "demo-002", mu: 0.0004, sigma: 0.012, seed: 22, var: -0.019, duration_s: 1.7 },
-        { run_id: "demo-003", mu: 0.0005, sigma: 0.008, seed: 11, var: -0.013, duration_s: 1.1 },
+        { run_id: "demo-001", message: "quick-smoke", repeat: 1, sleep_ms: 10, value: 42, duration_s: 0.12 },
+        { run_id: "demo-002", message: "k8s-batch", repeat: 2, sleep_ms: 25, value: 64, duration_s: 0.21 },
+        { run_id: "demo-003", message: "hello-cluster", repeat: 3, sleep_ms: 25, value: 58, duration_s: 0.30 },
       ],
-      cpu_request_cores: 0.5,
-      var_values: [-0.016, -0.019, -0.013]
+      cpu_request_cores: 0.1,
+      value_values: [42, 64, 58]
     };
 
     async function loadData() {
@@ -149,23 +149,23 @@
       ctx.fillText(`jobs=${n}`, c.width - 70, 14);
     }
 
-    function sweepVarAnimation(data) {
+    function outputDistributionAnimation(data) {
       const c = document.getElementById("montecarlo");
       const ctx = c.getContext("2d");
-      const varValues = (data.var_values && data.var_values.length
-        ? data.var_values
-        : data.jobs.map(j => Number(j.var)).filter(v => Number.isFinite(v))
+      const values = (data.value_values && data.value_values.length
+        ? data.value_values
+        : data.jobs.map(j => Number(j.value)).filter(v => Number.isFinite(v))
       ).slice();
 
-      if (!varValues.length) {
+      if (!values.length) {
         ctx.clearRect(0, 0, c.width, c.height);
         ctx.fillStyle = "#9faed8";
         ctx.font = "14px sans-serif";
-        ctx.fillText("No completed jobs with VaR values found.", 20, 30);
+        ctx.fillText("No completed jobs with output values found.", 20, 30);
         return;
       }
 
-      const sortedAll = [...varValues].sort((a, b) => a - b);
+      const sortedAll = [...values].sort((a, b) => a - b);
       const min = sortedAll[0];
       const max = sortedAll[sortedAll.length - 1] + 1e-12;
       const binsCount = Math.min(60, Math.max(12, Math.ceil(Math.sqrt(sortedAll.length) * 2)));
@@ -173,7 +173,7 @@
       const revealed = [];
       let index = 0;
 
-      function var5(vals) {
+      function p05(vals) {
         if (!vals.length) return 0;
         const sorted = [...vals].sort((a, b) => a - b);
         return sorted[Math.floor(0.05 * (sorted.length - 1))] ?? 0;
@@ -198,7 +198,7 @@
           ctx.fillRect(x, y, bw, h);
         });
 
-        const v = var5(revealed);
+        const v = p05(revealed);
         const vx = ((v - min) / (max - min || 1)) * c.width;
         ctx.strokeStyle = "#ff7f7f";
         ctx.lineWidth = 2;
@@ -209,8 +209,8 @@
 
         ctx.fillStyle = "#9faed8";
         ctx.font = "12px sans-serif";
-        ctx.fillText(`samples=${revealed.length}/${varValues.length}`, 10, 14);
-        ctx.fillText(`VaR(5%)=${v.toFixed(4)}`, c.width - 130, 14);
+        ctx.fillText(`samples=${revealed.length}/${values.length}`, 10, 14);
+        ctx.fillText(`P05=${v.toFixed(2)}`, c.width - 100, 14);
       }
 
       function frame() {
@@ -237,7 +237,7 @@
 
       renderKPIs(data);
       drawTimeline(data);
-      sweepVarAnimation(data);
+      outputDistributionAnimation(data);
     });
   </script>
 </body>

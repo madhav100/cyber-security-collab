@@ -1,6 +1,6 @@
-# QuantRun — Docker + Kubernetes Batch Platform (Financial Model Sweeps)
+# QuantRun — Docker + Kubernetes Batch Platform (Lightweight Job Smoke Tests)
 
-Run Monte Carlo / parameter-sweep jobs as Kubernetes Jobs using one Docker image, write outputs to a PVC, and aggregate results locally.
+Run simple Kubernetes Jobs using one Docker image, write outputs to a PVC, and aggregate results locally.
 
 ## Project structure
 
@@ -16,7 +16,7 @@ quantrun/
 │   └── workflows/
 │       └── helper-pod.yaml
 ├── models/
-│   └── var_mc/
+│   └── simple_job/
 │       └── run.py
 ├── results/
 └── scripts/
@@ -31,14 +31,14 @@ cd quantrun
 docker build -f docker/Dockerfile -t quantrun:local .
 
 docker run --rm \
-  -e MODEL=var_mc \
+  -e MODEL=simple_job \
   -e RUN_ID=test-001 \
-  -e CONFIG_JSON='{"mu":0.0003,"sigma":0.012,"n":50000,"seed":7,"alpha":0.05}' \
+  -e CONFIG_JSON='{"message":"hello-local","repeat":2,"sleep_ms":10}' \
   -e OUT_DIR=/output \
   -v "$PWD/results:/output" \
   quantrun:local
 
-cat results/var_mc/test-001/result.json
+cat results/simple_job/test-001/result.json
 ```
 
 ## 2) Start local Kubernetes
@@ -70,7 +70,7 @@ docker build -f docker/Dockerfile -t quantrun:local .
 kubectl apply -f k8s/namespaces.yaml
 ```
 
-## 5) Submit a 200-job sweep
+## 5) Submit a lightweight sweep
 
 ```bash
 python scripts/submit_sweep.py
@@ -100,8 +100,7 @@ kubectl -n quant-dev delete pod results-helper
 kubectl delete ns quant-dev
 ```
 
-
-## 9) Analytics dashboard (Kubernetes power + Monte Carlo animation)
+## 9) Analytics dashboard
 
 Generate analytics input from your aggregated summary:
 
@@ -119,12 +118,4 @@ python -m http.server 8000
 Open `http://localhost:8000` to view:
 - Kubernetes compute KPIs (job count, average/p95 duration, compute score)
 - Job duration timeline
-- Live Monte Carlo distribution animation with VaR(5%) marker
-
-## Next upgrades
-
-- Switch to Kubernetes Indexed Jobs for cleaner sweep indexing.
-- Add checkpointing to periodically persist partial run state.
-- Add a submit API and optional web UI.
-- Add Prometheus/Grafana metrics for jobs.
-- Move results to object storage for non-local clusters.
+- Job output distribution (P05 marker)
