@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: var-mc-REPLACE_RUNID
+  namespace: quant-dev
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: runner
+          image: quantrun:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODEL
+              value: "var_mc"
+            - name: RUN_ID
+              value: "REPLACE_RUNID"
+            - name: CONFIG_JSON
+              value: 'REPLACE_CONFIGJSON'
+            - name: OUT_DIR
+              value: "/output"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: results
+              mountPath: /output
+      volumes:
+        - name: results
+          persistentVolumeClaim:
+            claimName: quant-results-pvc
